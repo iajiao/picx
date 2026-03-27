@@ -1,4 +1,5 @@
 name: 自动压缩图片
+
 on:
   push:
     branches: [ master ]
@@ -12,23 +13,43 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
 
       - name: 安装压缩工具
-        run: sudo apt-get install -y optipng jpegoptim webp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y optipng jpegoptim webp
 
       - name: 压缩所有图片
         run: |
-          find . -type f \( -name "*.jpg" -o -name "*.jpeg" \) -exec jpegoptim --strip-all --max=85 {} \;
-          find . -type f -name "*.png" -exec optipng -o7 -strip all {} \;
-          find . -type f -name "*.webp" -exec cwebp -q 85 {} -o {} \;
+          # JPEG 压缩
+          find . -type f \( -name "*.jpg" -o -name "*.jpeg" \) -print0 | while IFS= read -r -d '' file; do
+            jpegoptim --strip-all --max=85 "$file"
+          done
+          
+          # PNG 压缩
+          find . -type f -name "*.png" -print0 | while IFS= read -r -d '' file; do
+            optipng -o7 -strip all "$file"
+          done
+          
+          # WebP 压缩
+          find . -type f -name "*.webp" -print0 | while IFS= read -r -d '' file; do
+            temp_file="${file}.tmp"
+            cwebp -q 85 "$file" -o "$temp_file"
+            mv "$temp_file" "$file"
+          done
 
       - name: 提交并推送
         run: |
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git add *.jpg *.jpeg *.png *.webp
-          git commit -m "🤖 自动压缩图片" || exit 0
-          git push https://${{ github.token }}@github.com/${{ github.repository }}.git HEAD:master
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 添加所有修改的图片
+          git add -A -- "*.jpg" "*.jpeg" "*.png" "*.webp"
+          
+          # 如果有变更才提交
+          if ! git diff --cached --quiet; then
+            git commit -m "🤖 自动压缩图片"
+            git push
+          else
+            echo "没有图片需要压缩"
+          fi
