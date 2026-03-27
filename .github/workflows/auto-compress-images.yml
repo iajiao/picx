@@ -1,0 +1,31 @@
+name: 自动压缩图片
+on:
+  push:
+    branches: [ master ]  # 你的主分支，一般是 main 或 master
+  workflow_dispatch:
+
+jobs:
+  compress:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 自动压缩所有图片
+        uses: calibreapp/image-actions@main
+        with:
+          jpegQuality: "80"
+          pngQuality: "80"
+          webpQuality: "80"
+          ignorePaths: "node_modules/**,dist/**"
+
+      - name: 自动提交压缩后的图片
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🤖 自动压缩图片"
+          file_pattern: "*.jpg *.jpeg *.png *.webp *.avif"
+          commit_user_name: github-actions[bot]
+          commit_user_email: github-actions[bot]@users.noreply.github.com
