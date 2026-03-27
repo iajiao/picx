@@ -13,43 +13,65 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: 安装压缩工具
         run: |
           sudo apt-get update
           sudo apt-get install -y optipng jpegoptim webp
 
-      - name: 压缩所有图片
+      - name: 压缩 JPEG 图片
         run: |
-          # JPEG 压缩
           find . -type f \( -name "*.jpg" -o -name "*.jpeg" \) -print0 | while IFS= read -r -d '' file; do
-            jpegoptim --strip-all --max=85 "$file"
+            echo "压缩 JPEG: $file"
+            jpegoptim --strip-all --max=85 "$file" || echo "跳过问题文件: $file"
           done
-          
-          # PNG 压缩
+
+      - name: 压缩 PNG 图片
+        run: |
           find . -type f -name "*.png" -print0 | while IFS= read -r -d '' file; do
-            optipng -o7 -strip all "$file"
+            echo "压缩 PNG: $file"
+            # 先检查是否是有效的 PNG
+            if file "$file" | grep -q "PNG image"; then
+              optipng -o7 -strip all "$file" || echo "压缩失败: $file"
+            else
+              echo "跳过非 PNG 文件: $file"
+            fi
           done
-          
-          # WebP 压缩
+
+      - name: 压缩 WebP 图片
+        run: |
           find . -type f -name "*.webp" -print0 | while IFS= read -r -d '' file; do
+            echo "压缩 WebP: $file"
             temp_file="${file}.tmp"
-            cwebp -q 85 "$file" -o "$temp_file"
-            mv "$temp_file" "$file"
+            if cwebp -q 85 "$file" -o "$temp_file" 2>/dev/null; then
+              mv "$temp_file" "$file"
+              echo "WebP 压缩完成"
+            else
+              echo "跳过无效 WebP 文件: $file"
+              rm -f "$temp_file"
+            fi
           done
 
       - name: 提交并推送
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
           
           # 添加所有修改的图片
           git add -A -- "*.jpg" "*.jpeg" "*.png" "*.webp"
           
-          # 如果有变更才提交
-          if ! git diff --cached --quiet; then
-            git commit -m "🤖 自动压缩图片"
-            git push
-          else
-            echo "没有图片需要压缩"
+          # 检查是否有变更
+          if git diff --cached --quiet; then
+            echo "没有图片需要提交"
+            exit 0
           fi
+          
+          # 提交更改
+          git commit -m "🤖 自动压缩图片"
+          
+          # 推送更改
+          git remote set-url origin https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
+          git push origin HEAD:master
